@@ -61,14 +61,12 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 
 <p>This project uses the following libraries.</p>
 <pre class="r"><code>library(caret)</code></pre>
-<pre><code>## Loading required package: lattice
-## Loading required package: ggplot2</code></pre>
 <div id="goal" class="section level2">
 <h2>Goal</h2>
 <p>The goal of this project is “to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants” to predict when the participant was doing the exercise correctly and incorrectly. The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways.</p>
 </div>
-<div id="getting-and-processing-the-data" class="section level2">
-<h2>Getting and Processing the Data</h2>
+<div id="getting-and-cleaning-the-data" class="section level2">
+<h2>Getting and Cleaning the Data</h2>
 <p>The first thing to do is to download the data and load the data.</p>
 <pre class="r"><code>if (!file.exists(&quot;data&quot;)){
     dir.create(&quot;data&quot;)
@@ -79,13 +77,82 @@ download.file(train_url, destfile=&quot;data/training.csv&quot;)
 download.file(test_url, destfile=&quot;data/testing.csv&quot;)
 training &lt;- read.csv(&quot;data/training.csv&quot;, header=TRUE, na.strings=c(&quot;NA&quot;,&quot;&quot;,&quot;#DIV/0!&quot;))
 testing &lt;- read.csv(&quot;data/testing.csv&quot;, header=TRUE, na.strings=c(&quot;NA&quot;,&quot;&quot;,&quot;#DIV/0!&quot;))</code></pre>
-<p>Once we have the data, we can begin to process it. The first thing I did was to remove unnecessary variables (particpant name, timestamp, etc).</p>
-<pre class="r"><code>unnecessary_variables &lt;- c(&quot;X&quot;,&quot;user_name&quot;,&quot;raw_timestamp_part1&quot;,&quot;raw_timestamp_part_2&quot;,&quot;cvtd_timestamp&quot;,&quot;new_window&quot;,&quot;num_window&quot;)
+<p>Once the data has been obtained, it needs to be cleaned. The first thing to do is to remove unnecessary variables (particpant name, timestamp, etc).</p>
+<pre class="r"><code>unnecessary_variables &lt;- c(&quot;X&quot;,&quot;user_name&quot;,&quot;raw_timestamp_part_1&quot;,&quot;raw_timestamp_part_2&quot;,&quot;cvtd_timestamp&quot;,&quot;new_window&quot;,&quot;num_window&quot;)
 training_clean &lt;- training[,!(names(training) %in% unnecessary_variables)]
 testing_clean &lt;- testing[,!(names(testing) %in% unnecessary_variables)]</code></pre>
+<p>Then, the variables that possess mostly NA values are removed.</p>
+<pre class="r"><code>NAs &lt;- apply(training_clean, 2, function(x) {
+     sum(is.na(x))
+})
+training_clean &lt;- training_clean[,which(NAs == 0)]
+testing_clean &lt;- testing_clean[,which(NAs == 0)]</code></pre>
+<p>Now, the training data can be further split into two partitions so that a pure set can be used to get the unbiased out of sample error.</p>
+<pre class="r"><code>inTrain &lt;- createDataPartition(y=training_clean$classe, p=0.7, list=FALSE)
+train &lt;- training_clean[inTrain,]
+test &lt;- training_clean[-inTrain,]</code></pre>
 </div>
 <div id="training-a-model" class="section level2">
 <h2>Training a Model</h2>
+<p>Now that the data is clean, a model can be trained. The random forest method was chosen after exploring others as random forest gave the most accurate results. It is also important to note that with this small dataset, random forest is a practical choice. With larger datasets, this might not always be the case. Four fold cross validation was used during the training process.</p>
+<pre class="r"><code>four_fold_cv = trainControl(method = &quot;cv&quot;, number = 4)
+modFit &lt;- train(classe ~ ., data = train, method = &quot;rf&quot;, trControl = four_fold_cv)</code></pre>
+<pre><code>## Loading required package: randomForest
+## randomForest 4.6-10
+## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<p>Now that the model is trained, the test set can be used to predict new values. With these new values, the out of sample error can be calculated.</p>
+<pre class="r"><code>test_predictions &lt;- predict(modFit, test)
+test_confusion_matrix &lt;- confusionMatrix(test_predictions, test$classe)
+print(test_confusion_matrix)</code></pre>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1671    5    0    0    0
+##          B    3 1131    9    3    1
+##          C    0    3 1013   13    0
+##          D    0    0    4  948    6
+##          E    0    0    0    0 1075
+## 
+## Overall Statistics
+##                                           
+##                Accuracy : 0.992           
+##                  95% CI : (0.9894, 0.9941)
+##     No Information Rate : 0.2845          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.9899          
+##  Mcnemar's Test P-Value : NA              
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.9982   0.9930   0.9873   0.9834   0.9935
+## Specificity            0.9988   0.9966   0.9967   0.9980   1.0000
+## Pos Pred Value         0.9970   0.9861   0.9845   0.9896   1.0000
+## Neg Pred Value         0.9993   0.9983   0.9973   0.9968   0.9985
+## Prevalence             0.2845   0.1935   0.1743   0.1638   0.1839
+## Detection Rate         0.2839   0.1922   0.1721   0.1611   0.1827
+## Detection Prevalence   0.2848   0.1949   0.1749   0.1628   0.1827
+## Balanced Accuracy      0.9985   0.9948   0.9920   0.9907   0.9968</code></pre>
+<p>As it can be seen, the accuracy is 99.2% so the out of sample error rate is 0.8%.</p>
+<p>The original test data can be used to make the 20 final predictions.</p>
+<pre class="r"><code>final_predictions &lt;- predict(modFit, testing_clean)</code></pre>
+<pre><code>## Loading required package: randomForest
+## randomForest 4.6-10
+## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<pre class="r"><code>pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0(&quot;problem_id_&quot;,i,&quot;.txt&quot;)
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(final_predictions)
+print(final_predictions)</code></pre>
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
+## Levels: A B C D E</code></pre>
+<p>All of these predictions are correct.</p>
 </div>
 
 
