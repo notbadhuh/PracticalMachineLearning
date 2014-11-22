@@ -1,0 +1,82 @@
+---
+title: "Practical Machine Learning Project"
+author: "Brandon"
+date: "November 22, 2014"
+output: html_document
+---
+This project uses the following libraries.
+```{r loadLibraries, results="hide", message=FALSE, warning=FALSE}
+library(caret)
+```
+
+##Goal
+The goal of this project is "to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants" to predict when the participant was doing the exercise correctly and incorrectly. The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+##Getting and Cleaning the Data
+The first thing to do is to download the data and load the data.
+
+```{r getData, results="hide", cache=TRUE}
+if (!file.exists("data")){
+    dir.create("data")
+}
+train_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(train_url, destfile="data/training.csv")
+download.file(test_url, destfile="data/testing.csv")
+training <- read.csv("data/training.csv", header=TRUE, na.strings=c("NA","","#DIV/0!"))
+testing <- read.csv("data/testing.csv", header=TRUE, na.strings=c("NA","","#DIV/0!"))
+```
+
+Once the data has been obtained, it needs to be cleaned.  The first thing to do is to remove unnecessary variables (particpant name, timestamp, etc). 
+
+```{r removeUncessaryVariables, results="hide"}
+unnecessary_variables <- c("X","user_name","raw_timestamp_part1","raw_timestamp_part_2","cvtd_timestamp","new_window","num_window")
+training_clean <- training[,!(names(training) %in% unnecessary_variables)]
+testing_clean <- testing[,!(names(testing) %in% unnecessary_variables)]
+```
+
+Then, the variables that possess mostly NA values are removed.
+
+```{r removeNAs, results="hide"}
+NAs <- apply(trainBulk, 2, function(x) {
+     sum(is.na(x))
+})
+training_clean <- training_clean[,which(NAs == 0)]
+testing_clean <- testing_clean[,which(NAs == 0)]
+```
+
+Now, the training data can be further split into two partitions so that a pure set can be used to get the unbiased out of sample error.
+
+```{r partitionData, results="hide"}
+inTrain <- createDataPartition(y=training_clean$classe, p=0.7, list=FALSE)
+train <- training_clean[inTrain,]
+test <- training_clean[-inTrain,]
+```
+
+##Training a Model
+Now that the data is clean, a model can be trained.  The random forest method was chosen after exploring others as random forest gave the most accurate results.  It is also important to note that with this small dataset, random forest is a practical choice.  With larger datasets, this might not always be the case.  Seven fold cross validation was used during the training process.
+
+```{r trainModel, cache=TRUE}
+seven_fold_cv = trainControl(method = "cv", number = 7)
+modFit <- train(classe ~ ., data = train, method = "rf", trControl = seven_fold_cv)
+```
+
+Now that the model is trained, the test set can be used to predict new values.  With these new values, the out of sample error can be calculated.
+
+```{r testModelAccuracy, cache=TRUE, warning=TRUE, message=TRUE}
+test_predictions <- predict(modFit, test)
+test_confusion_matrix <- confusionMatrix(test_predictions, test$classe)
+print(test_confusion_matrix)
+```
+
+As it can be seen, the out of sample error rate is NUMBER.
+
+We can also use the original test data to generate our 20 predictions.
+
+```{r finalPredictions, cache=TRUE, warning=TRUE, message=TRUE}
+final_predictions <- predict(modFit, testing_clean)
+final_predictions_confusion_matrix <- confusionMatrix(final_predictions, testing_clean$classe)
+print(final_predictions_confusion_matrix)
+```
+
+All of these predictions are correct.
